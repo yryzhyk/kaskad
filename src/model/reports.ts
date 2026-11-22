@@ -21,6 +21,11 @@ export interface ReportSection {
   rows: string[][];
   /** Колонки з числами (вирівнювання праворуч). */
   numeric?: number[];
+  /**
+   * Колонки для «Копіювати для Word» і CSV (індекс колонки на екрані + заголовок як у методичці).
+   * Якщо не задано — експортуються всі колонки.
+   */
+  exportColumns?: { index: number; title: string }[];
 }
 
 export interface Report {
@@ -29,13 +34,25 @@ export interface Report {
   sections: ReportSection[];
 }
 
-export type ReportKind = 'model' | 'activities' | 'arrows' | 'abc';
+export type ReportKind = 'model' | 'activities' | 'arrows' | 'costCenters' | 'abc' | 'abcParams';
 
 export const REPORT_TITLES: Record<ReportKind, string> = {
   model: 'Звіт по моделі',
   activities: 'Звіт по роботах',
   arrows: 'Звіт по стрілках',
+  costCenters: 'Центри витрат ABC',
   abc: 'Звіт ABC (функціонально-вартісний аналіз)',
+  abcParams: 'Параметри робіт ABC',
+};
+
+/** Короткі назви вкладок. */
+export const REPORT_TABS: Record<ReportKind, string> = {
+  model: 'Модель',
+  activities: 'Роботи',
+  arrows: 'Стрілки',
+  costCenters: 'Центри витрат',
+  abc: 'ABC',
+  abcParams: 'ABC: параметри (по рядках)',
 };
 
 function scopeLabel(model: Model, boxId?: Id): string {
@@ -54,8 +71,12 @@ export function buildReport(model: Model, kind: ReportKind, boxId?: Id): Report 
       return { title, scope, sections: [activitiesReport(model, boxId)] };
     case 'arrows':
       return { title, scope, sections: [arrowsReport(model, boxId)] };
+    case 'costCenters':
+      return { title, scope: 'Вся модель', sections: [costCentersReport(model)] };
     case 'abc':
       return { title, scope, sections: [abcReport(model, boxId)] };
+    case 'abcParams':
+      return { title, scope, sections: [abcParamsReport(model, boxId)] };
   }
 }
 
@@ -97,6 +118,11 @@ function activitiesReport(model: Model, boxId?: Id): ReportSection {
   const entries = activitySubtree(model, boxId);
   return {
     columns: ['Номер', 'Назва роботи', 'Визначення', 'Нотація', 'Діаграма'],
+    // табл. 2.6 методички: «Ім'я роботи», «Визначення (опис)»
+    exportColumns: [
+      { index: 1, title: "Ім'я роботи" },
+      { index: 2, title: 'Визначення (опис)' },
+    ],
     rows: entries.map((e) => [
       boxNumber(model, e.box.id),
       e.box.name,
@@ -158,6 +184,14 @@ function arrowsReport(model: Model, boxId?: Id): ReportSection {
   }
   return {
     columns: ['Назва стрілки', 'Джерело', 'Тип джерела', 'Призначення', 'Тип призначення', 'Визначення', 'Діаграма'],
+    // табл. 2.7 методички
+    exportColumns: [
+      { index: 0, title: "Ім'я стрілки" },
+      { index: 1, title: 'Джерело стрілки' },
+      { index: 2, title: 'Тип джерела стрілки' },
+      { index: 3, title: 'Призначення стрілки' },
+      { index: 4, title: 'Тип призначення стрілки' },
+    ],
     rows,
   };
 }
@@ -221,6 +255,43 @@ function abcReport(model: Model, boxId?: Id): ReportSection {
   });
   const numeric = [...cc.map((_, i) => i + 2), cc.length + 2, cc.length + 3, cc.length + 4];
   return { caption: '* — значення обчислено автоматично з декомпозиції: сума (значення дочірньої роботи × її частота)', columns, rows, numeric };
+}
+
+/** Табл. 2.8 методички: центри витрат. */
+function costCentersReport(model: Model): ReportSection {
+  return {
+    columns: ['Центр витрат', 'Визначення'],
+    rows: model.costCenters.map((c) => [c.name, c.definition]),
+  };
+}
+
+/**
+ * Табл. 2.9 методички: по рядку на кожну пару «робота + центр витрат».
+ * Тривалість і частота — параметри роботи, тому повторюються в кожному її рядку.
+ */
+function abcParamsReport(model: Model, boxId?: Id): ReportSection {
+  const entries = activitySubtree(model, boxId);
+  const rows: string[][] = [];
+  for (const e of entries) {
+    const r = abcOf(model, e.box);
+    const name = `${boxNumber(model, e.box.id)} ${e.box.name}${r.computed ? ' *' : ''}`;
+    const centers = model.costCenters.length ? model.costCenters : [null];
+    for (const cc of centers) {
+      rows.push([
+        name,
+        cc ? cc.name : '—',
+        formatNumber(cc ? r.costs[cc.id] ?? 0 : 0),
+        formatNumber(r.duration, 3),
+        formatNumber(r.frequency, 4),
+      ]);
+    }
+  }
+  return {
+    caption: `Вартість — у ${model.abc.currency}, тривалість — у ${model.abc.timeUnit}. * — значення обчислено автоматично з декомпозиції.`,
+    columns: ["Ім'я роботи", 'Центр витрат', 'Вартість', 'Тривалість', 'Частота'],
+    numeric: [2, 3, 4],
+    rows,
+  };
 }
 
 export { diagramLabel };

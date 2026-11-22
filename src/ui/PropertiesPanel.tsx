@@ -5,6 +5,7 @@ import { addBorderArrow, removeDecomposition, reorderBox } from '../model/ops';
 import { boxNumber, diagramKindLabel, diagramNode, diagramPageNumber, diagramTitle, findBox, isContext } from '../model/queries';
 import type { Arrow, Box, Endpoint, Id, Idef0Diagram, Idef3Diagram, JunctionType, LinkKind, Model } from '../model/types';
 import { NODE_TREE_ID } from '../model/types';
+import { BOX_FONT_SIZE, MIN_BOX_FONT_SIZE } from '../geometry/page';
 import { commit, select, setUi, useModel, useUi } from '../store/store';
 import { deleteSelection, openDecompose } from './actions';
 import { NumberField, TextField } from './fields';
@@ -74,6 +75,7 @@ function BoxProps({ model, diagramId, box }: { model: Model; diagramId: Id; box:
         <h3 data-testid="prop-number">{number}</h3>
       </div>
       <TextField label="Назва" value={box.name} multiline rows={2} testId="prop-name" onChange={(v) => updateBox(box.id, (b) => void (b.name = v))} />
+      <FitNote model={model} diagramId={diagramId} boxId={box.id} />
       <TextField label="Визначення" value={box.definition} multiline rows={4} testId="prop-definition" onChange={(v) => updateBox(box.id, (b) => void (b.definition = v))} />
       {isUob && <TextField label="Посилання (права клітинка смуги)" value={box.ref ?? ''} onChange={(v) => updateBox(box.id, (b) => void (b.ref = v))} />}
       {!ctx && !isUob && (
@@ -155,6 +157,25 @@ function BoxProps({ model, diagramId, box }: { model: Model; diagramId: Id; box:
       </div>
     </div>
   );
+}
+
+/** Повідомлення про зменшений шрифт або про назву, що не вміщається. */
+function FitNote({ model, diagramId, boxId }: { model: Model; diagramId: Id; boxId: Id }) {
+  const b = getLayout(model, diagramId)?.boxes.find((x) => x.id === boxId);
+  if (!b) return null;
+  if (b.overflow)
+    return (
+      <div className="warn-box danger-box" data-testid="name-overflow-warning">
+        ⚠ Назва не вміщається в блок навіть шрифтом {MIN_BOX_FONT_SIZE} px. Збільште блок (потягніть за кут) або скоротіть назву.
+      </div>
+    );
+  if (b.fontSize < BOX_FONT_SIZE)
+    return (
+      <p className="hint" data-testid="name-font-note">
+        Шрифт назви автоматично зменшено до {String(b.fontSize).replace('.', ',')} px, щоб вона вмістилася в блок.
+      </p>
+    );
+  return null;
 }
 
 function AbcSection({ model, box, abc }: { model: Model; box: Box; abc: ReturnType<typeof abcOf> }) {

@@ -12,14 +12,18 @@ import {
 } from '../model/queries';
 import type { Arrow, Box, Endpoint, Id, Idef0Diagram, Idef3Diagram, Model, Point, Rect, Role, Side } from '../model/types';
 import { NODE_TREE_ID } from '../model/types';
-import { AREA, BOX_FONT_SIZE, JUNCTION_H, JUNCTION_W, LABEL_FONT_SIZE, UOB_STRIP } from './page';
+import { AREA, BOX_FONT_SIZE, JUNCTION_H, JUNCTION_W, LABEL_FONT_SIZE, MIN_BOX_FONT_SIZE, UOB_STRIP } from './page';
 import { clamp, projectOnPath, rectsOverlap, route, type Dir } from './route';
-import { measure, wrapText } from './text';
+import { measure, wrapText, wrapWords } from './text';
 
 export interface BoxLayout {
   id: Id;
   rect: Rect;
   lines: string[];
+  /** Розмір шрифту назви (зменшується, якщо назва не вміщається). */
+  fontSize: number;
+  /** Назва не вміщається в блок навіть мінімальним шрифтом. */
+  overflow: boolean;
   number: string;
   cost?: string;
   kind: 'box' | 'uob';
@@ -148,18 +152,38 @@ function frameInfo(model: Model, diagramId: Id): FrameInfo {
   };
 }
 
+/**
+ * Підбір шрифту для назви блоку: від 13 px до 9 px з кроком 0,5 px, без розбиття слів.
+ * Якщо й так не вміщається — мінімальний шрифт з розбиттям слів, і якщо все одно
+ * не вміщається — overflow = true (попередження на блоці та у властивостях). Текст не обрізається.
+ */
+export function fitBoxText(name: string, w: number, textH: number): { lines: string[]; fontSize: number; overflow: boolean } {
+  const maxW = w - 12;
+  const fits = (lines: string[], size: number) => lines.length * (size + 2) - 2 <= textH - 4;
+  for (let size = BOX_FONT_SIZE; size >= MIN_BOX_FONT_SIZE; size -= 0.5) {
+    const lines = wrapWords(name, maxW, size);
+    if (lines && fits(lines, size)) return { lines, fontSize: size, overflow: false };
+  }
+  const lines = wrapText(name, maxW, MIN_BOX_FONT_SIZE);
+  return { lines, fontSize: MIN_BOX_FONT_SIZE, overflow: !fits(lines, MIN_BOX_FONT_SIZE) };
+}
+
+export function boxTextHeight(kind: 'box' | 'uob', h: number): number {
+  return kind === 'uob' ? h - UOB_STRIP : h - 10;
+}
+
 function boxLayout(model: Model, box: Box, kind: 'box' | 'uob'): BoxLayout {
   const rect = { x: box.x, y: box.y, w: box.w, h: box.h };
-  const textH = kind === 'uob' ? box.h - UOB_STRIP : box.h - 10;
-  let lines = wrapText(box.name, box.w - 12, BOX_FONT_SIZE);
-  const maxLines = Math.max(1, Math.floor((textH - 4) / (BOX_FONT_SIZE + 2)));
-  if (lines.length > maxLines) {
-    lines = lines.slice(0, maxLines);
-    lines[maxLines - 1] = lines[maxLines - 1].replace(/.{0,1}$/, '…');
-  }
-  const res: BoxLayout = { id: box.id, rect, lines, number: boxNumber(model, box.id), kind, ref: box.ref };
+  const fit = fitBoxText(box.name, box.w, boxTextHeight(kind, box.h));
+  const res: BoxLayout = { id: box.id, rect, ...fit, number: boxNumber(model, box.id), kind, ref: box.ref };
   if (model.abc.showCost) res.cost = formatMoney(model, abcOf(model, box).total);
   return res;
+}
+
+function overflowWarnings(boxes: BoxLayout[]): string[] {
+  const bad = boxes.filter((b) => b.overflow);
+  if (!bad.length) return [];
+  return [`Назва не вміщається в блок навіть шрифтом ${MIN_BOX_FONT_SIZE} px: ${bad.map((b) => b.number).join(', ')}. Збільште блок або скоротіть назву.`];
 }
 
 // ---------------------------------------------------------------- IDEF0
@@ -491,6 +515,7 @@ function layoutIdef0(model: Model, d: Idef0Diagram): Layout {
   } else if (d.boxes.length < 3 || d.boxes.length > 6) {
     warnings.push(`Діаграма декомпозиції має містити від 3 до 6 блоків (зараз: ${d.boxes.length}).`);
   }
+  warnings.push(...overflowWarnings(boxes));
   const dangling = d.arrows.filter((a) => a.source.kind === 'point' || a.target.kind === 'point');
   if (dangling.length) {
     const codes = dangling.map((a) => results.get(a.id)?.icom?.text).filter(Boolean);
@@ -738,7 +763,7 @@ function layoutIdef3(model: Model, d: Idef3Diagram): Layout {
     junctions,
     referents,
     frame: frameInfo(model, d.id),
-    warnings: [],
+    warnings: overflowWarnings(boxes),
     ports: new Map(),
   };
 }

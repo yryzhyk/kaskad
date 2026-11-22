@@ -104,6 +104,10 @@ test('скріншоти основних екранів і перевірка �
   await page.screenshot({ path: `${DIR}/06-report-arrows.png` });
   await page.getByTestId('report-abc').click();
   await page.screenshot({ path: `${DIR}/07-report-abc.png` });
+  await page.getByTestId('report-abcParams').click();
+  await page.screenshot({ path: `${DIR}/07b-report-abc-params.png` });
+  await page.getByTestId('report-costCenters').click();
+  await page.screenshot({ path: `${DIR}/07c-report-cost-centers.png` });
   await page.getByTestId('modal-close').click();
 
   await page.getByTestId('btn-abc').click();
@@ -115,6 +119,20 @@ test('скріншоти основних екранів і перевірка �
   await page.getByTestId('decomp-count').fill('7');
   await page.screenshot({ path: `${DIR}/09-decompose-dialog.png` });
   await page.getByTestId('modal-close').click();
+
+  // довгі назви: зменшений шрифт і попередження, якщо не вміщається
+  await page.getByTestId('tree-A0').click();
+  await selectBox(page, a0.boxes[2].id);
+  await page.getByTestId('prop-name').fill('Доставити замовлення клієнту, встановити та налаштувати меблі, підписати акт приймання-передачі');
+  await selectBox(page, a0.boxes[0].id);
+  await page.getByTestId('prop-name').fill(
+    'Прийняти замовлення від клієнта, провести консультацію щодо матеріалів і конструкції, виконати замір приміщення, погодити ескіз, кошторис, терміни виготовлення і доставки, оформити договір та отримати передоплату',
+  );
+  await expect(page.locator(`[data-overflow-warning="${a0.boxes[0].id}"]`)).toBeVisible();
+  await page.screenshot({ path: `${DIR}/11-long-names.png` });
+  await page.keyboard.press('Escape');
+  await page.getByTestId('btn-undo').click();
+  await page.getByTestId('btn-undo').click();
 
   // вузьке вікно ноутбука
   await page.setViewportSize({ width: 1280, height: 760 });

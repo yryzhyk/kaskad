@@ -323,3 +323,71 @@ test('редагування назви — один крок історії; De
   await page.keyboard.press('Control+z');
   expect((await currentDiagram(page)).boxes.map((b: any) => b.name)).toEqual(['Перша робота', 'Робота 2', 'Третя']);
 });
+
+test('довга назва блоку: шрифт зменшується, без «…»; якщо не вміщається — попередження', async ({ page }) => {
+  await fresh(page);
+  await expect(page.locator('.diagram-svg [data-frame]')).toContainText('ПРОЄКТ:');
+  const root = await currentDiagram(page);
+  await selectBox(page, root.boxes[0].id);
+  await decomposeSelected(page, 'idef0', 3);
+  const d = await currentDiagram(page);
+  const id = d.boxes[0].id;
+  await selectBox(page, id);
+  const boxLayout = async () => (await layout(page)).boxes.find((b: any) => b.id === id);
+
+  // коротка назва — 13 px
+  await page.getByTestId('prop-name').fill('Прийняти замовлення');
+  expect((await boxLayout()).fontSize).toBe(13);
+  await expect(page.getByTestId('name-font-note')).toHaveCount(0);
+
+  // довга назва — шрифт менший, увесь текст на місці, без «…»
+  const long = 'Прийняти, зареєструвати та перевірити замовлення клієнта на виготовлення меблів за індивідуальними розмірами';
+  await page.getByTestId('prop-name').fill(long);
+  let b = await boxLayout();
+  expect(b.fontSize).toBeLessThan(13);
+  expect(b.fontSize).toBeGreaterThanOrEqual(9);
+  expect(b.overflow).toBe(false);
+  expect(b.lines.join(' ')).toBe(long);
+  await expect(page.getByTestId('name-font-note')).toBeVisible();
+  const texts = await page.locator(`.diagram-svg [data-box="${id}"] text`).first().textContent();
+  expect(texts).not.toContain('…');
+  await expect(page.locator(`[data-overflow-warning="${id}"]`)).toHaveCount(0);
+  // текст не виходить за межі блоку
+  const fits = await page.evaluate((bid) => {
+    const g = document.querySelector(`.diagram-svg [data-box="${bid}"]`)!;
+    const r = (g.querySelector('rect') as SVGGraphicsElement).getBBox();
+    const t = (g.querySelector('text') as SVGGraphicsElement).getBBox();
+    return t.x >= r.x && t.x + t.width <= r.x + r.width && t.y >= r.y && t.y + t.height <= r.y + r.height;
+  }, id);
+  expect(fits).toBe(true);
+
+  // надто довга назва — явне попередження на блоці, у властивостях і на панелі інструментів
+  const huge = Array.from({ length: 8 }, () => long).join(' ');
+  await page.getByTestId('prop-name').fill(huge);
+  b = await boxLayout();
+  expect(b.fontSize).toBe(9);
+  expect(b.overflow).toBe(true);
+  expect(b.lines.join(' ')).toBe(huge);
+  await expect(page.locator(`[data-overflow-warning="${id}"]`)).toBeVisible();
+  await expect(page.getByTestId('name-overflow-warning')).toBeVisible();
+  await expect(page.getByTestId('diagram-warning')).toContainText('не вміщається');
+  // попередження не потрапляє в експорт
+  const svg: string = await page.evaluate(() => (window as any).kaskad.svg());
+  expect(svg).not.toContain('Назва не вміщається');
+  expect(svg).not.toContain('…');
+
+  // збільшуємо блок — попередження зникає
+  await page.evaluate(
+    ([did, bid]) =>
+      (window as any).kaskad.commit((m: any) => {
+        const bx = m.diagrams[did].boxes.find((x: any) => x.id === bid);
+        bx.x = 60;
+        bx.y = 60;
+        bx.w = 600;
+        bx.h = 420;
+      }),
+    [d.id, id],
+  );
+  await expect(page.locator(`[data-overflow-warning="${id}"]`)).toHaveCount(0);
+  await expect(page.getByTestId('name-overflow-warning')).toHaveCount(0);
+});

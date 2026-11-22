@@ -30,6 +30,12 @@ export function clearMeasureCache(): void {
   cache.clear();
 }
 
+/** Перенесення по словах без розбиття слів; null — якщо якесь слово ширше за рядок. */
+export function wrapWords(text: string, maxWidth: number, size: number, bold = false): string[] | null {
+  for (const word of (text || '').split(/\s+/)) if (word && measure(word, size, bold) > maxWidth) return null;
+  return wrapText(text, maxWidth, size, bold);
+}
+
 /** Перенесення тексту по словах у межах maxWidth (довгі слова розбиваються). */
 export function wrapText(text: string, maxWidth: number, size: number, bold = false): string[] {
   const lines: string[] = [];

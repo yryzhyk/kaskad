@@ -28,6 +28,8 @@ export const GRID = 5;
 
 export const DIAGRAM_FONT = 'KaskadArimo';
 export const BOX_FONT_SIZE = 13;
+/** Мінімальний розмір шрифту назви блоку при автоматичному зменшенні. */
+export const MIN_BOX_FONT_SIZE = 9;
 export const LABEL_FONT_SIZE = 12;
 export const SMALL_FONT_SIZE = 11;
 

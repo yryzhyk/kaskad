@@ -3,7 +3,7 @@ import { downloadBlob, safeFileName } from '../export/download';
 import { copyReport, reportToCsv } from '../export/table';
 import { newId } from '../model/factory';
 import { activitySubtree, boxNumber, findBox } from '../model/queries';
-import { buildReport, REPORT_TITLES, type ReportKind } from '../model/reports';
+import { buildReport, REPORT_TABS, type ReportKind } from '../model/reports';
 import type { Id } from '../model/types';
 import { commit, setUi, toast, useModel, useUi } from '../store/store';
 import { doDecompose } from './actions';
@@ -155,15 +155,15 @@ function ReportsDialog({ onClose }: { onClose: () => void }) {
     <Modal title="Звіти" onClose={onClose} wide testId="reports-dialog">
       <div className="report-controls">
         <div className="tabs">
-          {(Object.keys(REPORT_TITLES) as ReportKind[]).map((k) => (
+          {(Object.keys(REPORT_TABS) as ReportKind[]).map((k) => (
             <button key={k} className={`tab ${kind === k ? 'active' : ''}`} data-testid={`report-${k}`} onClick={() => setKind(k)}>
-              {k === 'model' ? 'Модель' : k === 'activities' ? 'Роботи' : k === 'arrows' ? 'Стрілки' : 'ABC'}
+              {REPORT_TABS[k]}
             </button>
           ))}
         </div>
         <label className="field inline">
           <span className="field-label">Обсяг</span>
-          <select value={validScope ?? ''} onChange={(e) => setScope(e.target.value)} data-testid="report-scope">
+          <select value={validScope ?? ''} onChange={(e) => setScope(e.target.value)} data-testid="report-scope" disabled={kind === 'costCenters'}>
             <option value="">Вся модель</option>
             {activities.map((a) => (
               <option key={a.box.id} value={a.box.id}>
@@ -198,6 +198,12 @@ function ReportsDialog({ onClose }: { onClose: () => void }) {
         {report.sections.map((s, i) => (
           <div key={i} className="report-section">
             {s.caption && <p className="report-caption">{s.caption}</p>}
+            {s.exportColumns && (
+              <p className="report-export-note" data-testid="report-export-note">
+                У «Копіювати для Word» і CSV потрапляють лише колонки таблиці {kind === 'activities' ? '2.6' : '2.7'} методички:{' '}
+                {s.exportColumns.map((c) => `«${c.title}»`).join(', ')}.
+              </p>
+            )}
             <table className="report-table" data-testid={`report-table-${i}`}>
               <thead>
                 <tr>

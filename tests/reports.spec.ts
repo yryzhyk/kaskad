@@ -104,5 +104,106 @@ test('звіти для обраної роботи з декомпозиціє�
   });
   expect(clip.html).toContain('<table');
   expect(clip.html).toContain('Розкроїти матеріал');
-  expect(clip.text).toContain('Номер\tНазва роботи');
+  expect(clip.text).toContain("Ім'я роботи\tВизначення (опис)");
+});
+
+async function downloadCsv(page: any): Promise<string> {
+  const [dl] = await Promise.all([page.waitForEvent('download'), page.getByTestId('report-csv').click()]);
+  return readFileSync((await dl.path())!, 'utf8');
+}
+
+async function copyHtml(page: any): Promise<{ html: string; text: string }> {
+  // очищаємо буфер, щоб не прочитати попередню копію
+  await page.evaluate(() => navigator.clipboard.writeText(''));
+  await page.getByTestId('report-copy').click();
+  let res = { html: '', text: '' };
+  await expect
+    .poll(async () => {
+      res = await page.evaluate(async () => {
+        try {
+          const items = await navigator.clipboard.read();
+          const item = items[0];
+          if (!item || !item.types.includes('text/html')) return { html: '', text: '' };
+          const html = await (await item.getType('text/html')).text();
+          const text = await (await item.getType('text/plain')).text();
+          return { html, text };
+        } catch {
+          return { html: '', text: '' };
+        }
+      });
+      return res.html.length > 0;
+    })
+    .toBe(true);
+  return res;
+}
+
+const headersOf = (html: string) => [...html.matchAll(/<th[^>]*>(.*?)<\/th>/g)].map((m) => m[1]);
+
+test('табл. 2.6 і 2.7: на екрані всі колонки, у Word і CSV — лише колонки методички', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await openSample(page);
+  await page.getByTestId('btn-reports').click();
+
+  // 2.6 — роботи
+  await page.getByTestId('report-activities').click();
+  await expect(page.getByTestId('report-table-0').locator('th')).toHaveCount(5);
+  await expect(page.getByTestId('report-export-note')).toContainText('2.6');
+  let csv = await downloadCsv(page);
+  let lines = csv.replace('﻿', '').split('\r\n');
+  expect(lines[3]).toBe("Ім'я роботи;Визначення (опис)");
+  expect(lines[4]).toBe('Виготовити меблі на замовлення;Повний цикл виконання замовлення клієнта: від прийому до встановлення.');
+  expect(lines.slice(3).filter(Boolean).every((l) => l.split(';').length === 2)).toBe(true);
+  let clip = await copyHtml(page);
+  expect(headersOf(clip.html)).toEqual(["Ім'я роботи", 'Визначення (опис)']);
+  expect(clip.html).not.toContain('IDEF3 (UOB)');
+  expect(clip.text.split('\n')[3]).toBe("Ім'я роботи\tВизначення (опис)");
+
+  // 2.7 — стрілки
+  await page.getByTestId('report-arrows').click();
+  await expect(page.getByTestId('report-table-0').locator('th')).toHaveCount(7);
+  await expect(page.getByTestId('report-export-note')).toContainText('2.7');
+  csv = await downloadCsv(page);
+  lines = csv.replace('﻿', '').split('\r\n');
+  expect(lines[3]).toBe("Ім'я стрілки;Джерело стрілки;Тип джерела стрілки;Призначення стрілки;Тип призначення стрілки");
+  expect(lines[4]).toBe('Замовлення клієнта;Зовнішнє середовище (межа A-0);Вхід;A0 Виготовити меблі на замовлення;Вхід');
+  expect(csv).not.toContain('Заявка клієнта з побажаннями');
+  clip = await copyHtml(page);
+  expect(headersOf(clip.html)).toEqual(["Ім'я стрілки", 'Джерело стрілки', 'Тип джерела стрілки', 'Призначення стрілки', 'Тип призначення стрілки']);
+});
+
+test('табл. 2.8 «Центри витрат» і табл. 2.9 «Параметри робіт» (по рядку на пару робота + центр)', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await openSample(page);
+  await page.getByTestId('btn-reports').click();
+
+  // 2.8
+  await page.getByTestId('report-costCenters').click();
+  const t = page.getByTestId('report-table-0');
+  await expect(t.locator('th')).toHaveText(['Центр витрат', 'Визначення']);
+  await expect(t.locator('tbody tr')).toHaveCount(2);
+  await expect(t.locator('tbody tr').first().locator('td')).toHaveText(['Оплата праці', 'Заробітна плата персоналу']);
+  await expect(page.getByTestId('report-scope')).toBeDisabled();
+  let csv = await downloadCsv(page);
+  expect(csv).toContain('Центр витрат;Визначення\r\nОплата праці;Заробітна плата персоналу\r\nМатеріали;ДСП, фурнітура, лаки та фарби');
+  let clip = await copyHtml(page);
+  expect(headersOf(clip.html)).toEqual(['Центр витрат', 'Визначення']);
+  expect(clip.html).toContain('Заробітна плата персоналу');
+
+  // 2.9 — 9 робіт × 2 центри витрат = 18 рядків
+  await page.getByTestId('report-abcParams').click();
+  await expect(t.locator('th')).toHaveText(["Ім'я роботи", 'Центр витрат', 'Вартість', 'Тривалість', 'Частота']);
+  await expect(t.locator('tbody tr')).toHaveCount(18);
+  const row = (i: number) => t.locator('tbody tr').nth(i).locator('td');
+  await expect(row(0)).toHaveText(['A0 Виготовити меблі на замовлення *', 'Оплата праці', '1 315', '13,8', '1']);
+  await expect(row(1)).toHaveText(['A0 Виготовити меблі на замовлення *', 'Матеріали', '2 745', '13,8', '1']);
+  // «Пофарбувати»: частота 0,3
+  await expect(t.locator('tbody tr', { hasText: 'Пофарбувати' }).first().locator('td')).toHaveText(['3 Пофарбувати', 'Оплата праці', '250', '3', '0,3']);
+  csv = await downloadCsv(page);
+  expect(csv).toContain("Ім'я роботи;Центр витрат;Вартість;Тривалість;Частота");
+  expect(csv).toContain('3 Пофарбувати;Матеріали;400;3;0,3');
+  // для обраної роботи A2: 6 робіт × 2 = 12 рядків
+  await page.getByTestId('report-scope').selectOption({ label: '  A2 Виготовити меблі' });
+  await expect(t.locator('tbody tr')).toHaveCount(12);
+  clip = await copyHtml(page);
+  expect(headersOf(clip.html)).toEqual(["Ім'я роботи", 'Центр витрат', 'Вартість', 'Тривалість', 'Частота']);
 });

@@ -128,7 +128,7 @@ function Frame({ layout }: { layout: Layout }) {
       <line x1={R - ctxW} y1={L} x2={R - ctxW} y2={AREA.top} stroke={STROKE} strokeWidth={0.8} />
       <text x={L + 5} y={L + 12} fontSize={small} fill={STROKE}>АВТОР:</text>
       <text x={L + 5} y={L + 27} fontSize={11} fill={STROKE}>{cut(f.author, 44)}</text>
-      <text x={L + 305} y={L + 12} fontSize={small} fill={STROKE}>ПРОЕКТ:</text>
+      <text x={L + 305} y={L + 12} fontSize={small} fill={STROKE}>ПРОЄКТ:</text>
       <text x={L + 305} y={L + 27} fontSize={11} fill={STROKE}>{cut(f.project, 46)}</text>
       <text x={L + 625} y={L + 12} fontSize={small} fill={STROKE}>ДАТА:</text>
       <text x={L + 625} y={L + 27} fontSize={11} fill={STROKE}>{f.date}</text>
@@ -166,12 +166,12 @@ export function DiagramSvg({ layout, exportMode, scale = 1, children, fontCss, s
       {layout.boxes.map((b) => {
         const r = b.rect;
         const textH = b.kind === 'uob' ? r.h - UOB_STRIP : r.h - 8;
-        const blockH = b.lines.length * (BOX_FONT_SIZE + 2) - 2;
+        const blockH = b.lines.length * (b.fontSize + 2) - 2;
         const top = r.y + Math.max(3, (textH - blockH) / 2);
         return (
           <g key={b.id} data-box={b.id}>
             <rect x={r.x} y={r.y} width={r.w} height={r.h} fill="#fff" stroke={STROKE} strokeWidth={1.5} />
-            <TextLines lines={b.lines} cx={r.x + r.w / 2} top={top} size={BOX_FONT_SIZE} />
+            <TextLines lines={b.lines} cx={r.x + r.w / 2} top={top} size={b.fontSize} />
             {b.kind === 'box' ? (
               <text x={r.x + r.w - 4} y={r.y + r.h - 4} fontSize={SMALL_FONT_SIZE} textAnchor="end" fill={STROKE} data-box-number="">
                 {b.number}

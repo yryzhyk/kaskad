@@ -1,4 +1,15 @@
-import type { Report } from '../model/reports';
+import type { Report, ReportSection } from '../model/reports';
+
+/** Таблиця для експорту: лише колонки exportColumns (якщо задані), із заголовками як у методичці. */
+export function exportView(s: ReportSection): { columns: string[]; rows: string[][]; numeric: number[] } {
+  if (!s.exportColumns) return { columns: s.columns, rows: s.rows, numeric: s.numeric ?? [] };
+  const idx = s.exportColumns.map((c) => c.index);
+  return {
+    columns: s.exportColumns.map((c) => c.title),
+    rows: s.rows.map((r) => idx.map((i) => r[i] ?? '')),
+    numeric: idx.flatMap((i, k) => (s.numeric?.includes(i) ? [k] : [])),
+  };
+}
 
 function csvCell(v: string): string {
   const s = (v ?? '').replace(/^\s+/, (m) => m); // зберігаємо відступи
@@ -8,7 +19,8 @@ function csvCell(v: string): string {
 /** CSV (роздільник «;», UTF-8 з BOM — коректно відкривається в Excel з українською локаллю). */
 export function reportToCsv(r: Report): string {
   const lines: string[] = [csvCell(r.title), csvCell(r.scope), ''];
-  for (const s of r.sections) {
+  for (const sec of r.sections) {
+    const s = { ...exportView(sec), caption: sec.caption };
     if (s.caption) lines.push(csvCell(s.caption));
     lines.push(s.columns.map(csvCell).join(';'));
     for (const row of s.rows) lines.push(row.map(csvCell).join(';'));
@@ -26,7 +38,8 @@ export function reportToHtml(r: Report): string {
   const cell = 'border:1px solid #000;padding:3pt 5pt;vertical-align:top;font-family:"Times New Roman",serif;font-size:12pt;';
   const parts = [`<p style="font-family:'Times New Roman',serif;font-size:14pt;font-weight:bold">${esc(r.title)}</p>`];
   parts.push(`<p style="font-family:'Times New Roman',serif;font-size:12pt">${esc(r.scope)}</p>`);
-  for (const s of r.sections) {
+  for (const sec of r.sections) {
+    const s = { ...exportView(sec), caption: sec.caption };
     if (s.caption) parts.push(`<p style="font-family:'Times New Roman',serif;font-size:12pt;font-style:italic">${esc(s.caption)}</p>`);
     parts.push('<table style="border-collapse:collapse;width:100%" border="1" cellspacing="0" cellpadding="4">');
     parts.push('<tr>' + s.columns.map((c) => `<th style="${cell}font-weight:bold;background:#f2f2f2">${esc(c)}</th>`).join('') + '</tr>');
@@ -36,7 +49,7 @@ export function reportToHtml(r: Report): string {
           row
             .map((c, i) => {
               const indent = (c.match(/^ */)?.[0].length ?? 0) / 4;
-              const align = s.numeric?.includes(i) ? 'text-align:right;' : '';
+              const align = s.numeric.includes(i) ? 'text-align:right;' : '';
               const pad = indent ? `padding-left:${5 + indent * 12}pt;` : '';
               return `<td style="${cell}${align}${pad}">${esc(c.trim())}</td>`;
             })
@@ -51,7 +64,8 @@ export function reportToHtml(r: Report): string {
 
 export function reportToTsv(r: Report): string {
   const lines: string[] = [r.title, r.scope, ''];
-  for (const s of r.sections) {
+  for (const sec of r.sections) {
+    const s = { ...exportView(sec), caption: sec.caption };
     if (s.caption) lines.push(s.caption);
     lines.push(s.columns.join('\t'));
     for (const row of s.rows) lines.push(row.map((c) => c.replace(/[\t\n]/g, ' ')).join('\t'));

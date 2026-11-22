@@ -378,6 +378,23 @@ function Overlay({ layout, model, pending, endpointPreview }: { layout: Layout; 
   const ui = useUi();
   const sel = ui.selection;
   const els: React.ReactNode[] = [];
+  // назва не вміщається в блок — явне попередження (лише на полотні, не в експорті)
+  for (const b of layout.boxes) {
+    if (!b.overflow) continue;
+    const r = b.rect;
+    const text = '⚠ Назва не вміщається';
+    const tw = 136;
+    const ty = r.y - 22 < 44 ? r.y + r.h + 4 : r.y - 22;
+    els.push(
+      <g key={`ov-${b.id}`} data-overflow-warning={b.id} pointerEvents="none">
+        <rect x={r.x - 2} y={r.y - 2} width={r.w + 4} height={r.h + 4} fill="none" stroke="#dc2626" strokeWidth={2} strokeDasharray="5 3" />
+        <rect x={r.x + r.w / 2 - tw / 2} y={ty} width={tw} height={18} rx={4} fill="#dc2626" />
+        <text x={r.x + r.w / 2} y={ty + 13} fontSize={11} fontWeight={700} textAnchor="middle" fill="#fff" fontFamily="system-ui, sans-serif">
+          {text}
+        </text>
+      </g>,
+    );
+  }
   if (sel) {
     if (sel.kind === 'box' || sel.kind === 'referent' || sel.kind === 'junction') {
       const r =
